@@ -74,17 +74,22 @@ localizacao_gps = streamlit_geolocation()
 
 id_funcionario = st.text_input("ID do Funcionário", placeholder="O seu ID aqui...")
 
+# --- NOVO: Secção de depuração para ver os dados de localização ---
+with st.expander("Ver dados de localização recebidos (para depuração)"):
+    st.write(localizacao_gps)
+# ----------------------------------------------------------------
+
 if st.button("Bater o Ponto", type="primary", use_container_width=True):
     if not id_funcionario:
         st.warning("É necessário inserir um ID de funcionário.", icon="⚠️")
     elif not localizacao_gps or 'latitude' not in localizacao_gps:
-        st.error("Não foi possível obter a sua localização. Por favor, autorize o acesso no seu navegador.", icon="🛰️")
+        st.error("Não foi possível obter a sua localização. Por favor, autorize o acesso no seu navegador e recarregue a página.", icon="🛰️")
     else:
         user_coords = (localizacao_gps['latitude'], localizacao_gps['longitude'])
         
         distancia = geodesic(EMPRESA_LOCALIZACAO, user_coords).meters
         
-        st.info(f"Você está a {distancia:.0f} metros da {EMPRESA_NOME}.", icon="📍")
+        st.info(f"Você está a {distancia:.0f} metros da {EMPRESA_NOME}.", icon="�")
         
         status_local = ""
         if distancia <= RAIO_PERMITIDO_METROS:
@@ -133,3 +138,4 @@ else:
                 file_name=ARQUIVO_EXCEL,
                 mime="application/vnd.ms-excel"
             )
+
