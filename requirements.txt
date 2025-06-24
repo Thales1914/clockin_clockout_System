@@ -1,0 +1,5 @@
+streamlit
+streamlit-geolocation
+pandas
+openpyxl
+geopy
