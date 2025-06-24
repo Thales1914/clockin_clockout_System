@@ -3,3 +3,5 @@ streamlit-geolocation
 pandas
 openpyxl
 geopy
+pytz
+streamlit-gsheets
