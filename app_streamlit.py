@@ -15,27 +15,34 @@ st.set_page_config(
 
 # --- CONFIGURAÇÕES GLOBAIS ---
 EMPRESA_NOME = "Omega Distribuidora"
-EMPRESA_LOCALIZACAO = (-3.8210554, -38.5049637)  # (Latitude, Longitude)
-RAIO_PERMITIDO_METROS = 50 # <-- PARÂMETRO AJUSTADO PARA 50 METROS
+EMPRESA_LOCALIZACAO = (-3.8210554, -38.5049637)
+RAIO_PERMITIDO_METROS = 50
+PRECISAO_MAXIMA_METROS = 75
 
 # --- Lógica para guardar dados num ficheiro local ---
 ARQUIVO_JSON = "registros_ponto.json"
+ARQUIVO_EXCEL = "relatorio_ponto.xlsx"
 
 def carregar_registros():
+    """Carrega os registros do ficheiro JSON de forma segura."""
     if not os.path.exists(ARQUIVO_JSON):
         return {}
     try:
         with open(ARQUIVO_JSON, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            content = f.read()
+            if not content:
+                return {}
+            return json.loads(content)
     except (json.JSONDecodeError, IOError):
         return {}
 
 def salvar_registros(registros):
+    """Salva os registros no ficheiro JSON."""
     with open(ARQUIVO_JSON, 'w', encoding='utf-8') as f:
         json.dump(registros, f, indent=4, ensure_ascii=False)
 
-def bater_ponto(funcionario_id, localizacao_gps, status_local):
-    """Guarda o registo de ponto com o status da localização."""
+def bater_ponto(funcionario_id, localizacao_gps, status_local, precisao):
+    """Guarda o registo de ponto, agora incluindo a precisão do GPS."""
     if not funcionario_id.strip():
         return "⚠️ Por favor, insira um ID de funcionário.", "warning"
 
@@ -43,28 +50,29 @@ def bater_ponto(funcionario_id, localizacao_gps, status_local):
     agora = datetime.now()
     hoje_str = agora.strftime("%Y-%m-%d")
 
-    if funcionario_id not in registros:
-        registros[funcionario_id] = {}
-    if hoje_str not in registros[funcionario_id]:
-        registros[funcionario_id][hoje_str] = []
+    registros_funcionario = registros.get(funcionario_id, {})
+    registros_do_dia = registros_funcionario.get(hoje_str, [])
 
-    registros_do_dia = registros[funcionario_id][hoje_str]
-    
     tipo_registro = 'entrada'
-    if registros_do_dia and registros_do_dia[-1]['tipo'] == 'entrada':
+    if registros_do_dia and registros_do_dia[-1].get('tipo') == 'entrada':
         tipo_registro = 'saida'
 
     local_str = "N/A"
-    if localizacao_gps and 'latitude' in localizacao_gps and 'longitude' in localizacao_gps:
+    if localizacao_gps and 'latitude' in localizacao_gps:
         local_str = f"Lat: {localizacao_gps['latitude']:.4f}, Lon: {localizacao_gps['longitude']:.4f}"
 
     novo_registro = {
         "hora": agora.isoformat(),
         "tipo": tipo_registro,
         "localizacao_gps": local_str,
-        "status_local": status_local
+        "status_local": status_local,
+        "precisao_gps_metros": precisao
     }
-    registros[funcionario_id][hoje_str].append(novo_registro)
+    
+    registros_do_dia.append(novo_registro)
+    registros_funcionario[hoje_str] = registros_do_dia
+    registros[funcionario_id] = registros_funcionario
+    
     salvar_registros(registros)
     
     mensagem = f"Ponto de '{tipo_registro.upper()}' registado às {agora.strftime('%H:%M:%S')}."
@@ -75,10 +83,21 @@ def bater_ponto(funcionario_id, localizacao_gps, status_local):
 st.title(f"🔵 Ponto {EMPRESA_NOME}")
 st.markdown("Insira o seu ID e clique no botão para registar o seu ponto.")
 
-# Pede a localização ao navegador do utilizador
 localizacao_gps = streamlit_geolocation()
 
 id_funcionario = st.text_input("ID do Funcionário", placeholder="O seu ID aqui...")
+
+# --- BLOCO CORRIGIDO ---
+# Adicionamos uma verificação extra para garantir que a 'precisão_atual' não é 'None'
+if localizacao_gps and 'accuracy' in localizacao_gps:
+    precisao_atual = localizacao_gps['accuracy']
+    if precisao_atual is not None: # <-- ESTA É A CORREÇÃO
+        if precisao_atual <= PRECISAO_MAXIMA_METROS:
+            st.caption(f"🛰️ Qualidade do sinal: Boa (precisão de {precisao_atual:.0f}m)")
+        else:
+            st.caption(f"🛰️ Qualidade do sinal: Fraca (precisão de {precisao_atual:.0f}m). Tente ir para um local mais aberto.")
+# --- FIM DO BLOCO CORRIGIDO ---
+
 
 if st.button("Bater o Ponto", type="primary", use_container_width=True):
     if not id_funcionario:
@@ -86,27 +105,29 @@ if st.button("Bater o Ponto", type="primary", use_container_width=True):
     elif not localizacao_gps or 'latitude' not in localizacao_gps:
         st.error("Não foi possível obter a sua localização. Por favor, autorize o acesso no seu navegador e recarregue a página.", icon="🛰️")
     else:
-        with st.spinner("A verificar localização..."):
-            user_coords = (localizacao_gps['latitude'], localizacao_gps['longitude'])
-            
-            # Calcula a distância em metros
-            distancia = geodesic(EMPRESA_LOCALIZACAO, user_coords).meters
-            
-            st.info(f"Você está a {distancia:.0f} metros da {EMPRESA_NOME}.", icon="📍")
-            
-            status_local = ""
-            if distancia <= RAIO_PERMITIDO_METROS:
-                st.success("Localização validada: Dentro da área permitida (Presencial).")
-                status_local = "Presencial"
-            else:
-                st.warning("Aviso: Fora da área permitida (Remoto).")
+        precisao_gps = localizacao_gps.get('accuracy')
+        if precisao_gps is None or precisao_gps > PRECISAO_MAXIMA_METROS:
+            st.error(f"Sinal de GPS muito fraco ou sem dados de precisão. O ponto não pode ser registado. Tente novamente num local com melhor sinal.", icon="🚫")
+        else:
+            with st.spinner("A verificar localização..."):
+                user_coords = (localizacao_gps['latitude'], localizacao_gps['longitude'])
+                distancia = geodesic(EMPRESA_LOCALIZACAO, user_coords).meters
+                
+                st.info(f"Você está a {distancia:.0f} metros da {EMPRESA_NOME}.", icon="📍")
+                
                 status_local = "Remoto"
-            
-            mensagem, tipo_alerta = bater_ponto(id_funcionario.lower(), localizacao_gps, status_local)
-            if tipo_alerta == "success":
-                st.success(mensagem, icon="✅")
-            else:
-                st.warning(mensagem, icon="⚠️")
+                if distancia <= RAIO_PERMITIDO_METROS:
+                    st.success("Localização validada: Dentro da área permitida (Presencial).")
+                    status_local = "Presencial"
+                else:
+                    st.warning("Aviso: Fora da área permitida (Remoto).")
+                    status_local = "Remoto"
+                
+                mensagem, tipo_alerta = bater_ponto(id_funcionario.lower(), localizacao_gps, status_local, precisao_gps)
+                if tipo_alerta == "success":
+                    st.success(mensagem, icon="✅")
+                else:
+                    st.warning(mensagem, icon="⚠️")
 
 # --- Funcionalidade de Relatório ---
 st.divider()
@@ -123,11 +144,24 @@ else:
                 dados_tabela.append({
                     'Funcionário': func_id,
                     'Data': data,
-                    'Hora': datetime.fromisoformat(evento['hora']).strftime('%H:%M:%S'),
-                    'Tipo': evento['tipo'].capitalize(),
+                    'Hora': datetime.fromisoformat(evento.get('hora', '')).strftime('%H:%M:%S'),
+                    'Tipo': evento.get('tipo', 'N/D').capitalize(),
                     'Status Local': evento.get('status_local', 'N/D'),
+                    'Precisão GPS (m)': evento.get('precisao_gps_metros'),
                     'Coordenadas': evento.get('localizacao_gps', 'N/D')
                 })
     
     df = pd.DataFrame(dados_tabela)
+    colunas_ordenadas = ['Funcionário', 'Data', 'Hora', 'Tipo', 'Status Local', 'Precisão GPS (m)', 'Coordenadas']
+    df = df[colunas_ordenadas]
+
     st.dataframe(df.style.hide(axis="index"), use_container_width=True)
+
+    df.to_excel(ARQUIVO_EXCEL, index=False, engine='openpyxl')
+    with open(ARQUIVO_EXCEL, "rb") as file:
+        st.download_button(
+            label="Descarregar Relatório como Excel",
+            data=file,
+            file_name=ARQUIVO_EXCEL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )

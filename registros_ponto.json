@@ -1,0 +1,12 @@
+{
+    "kaike": {
+        "2025-06-25": [
+            {
+                "hora": "2025-06-25T11:07:02.117596",
+                "tipo": "entrada",
+                "localizacao_gps": "Lat: -3.8176, Lon: -38.5132",
+                "status_local": "Remoto"
+            }
+        ]
+    }
+}
