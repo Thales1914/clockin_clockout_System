@@ -18,8 +18,7 @@ st.set_page_config(
 EMPRESA_NOME = "Omega Distribuidora"
 EMPRESA_LOCALIZACAO = (-3.8210554, -38.5049637)
 RAIO_PERMITIDO_METROS = 50
-# AJUSTADO: Aumentamos o limite para aceitar sinais mais fracos
-PRECISAO_MAXIMA_METROS = 151 
+PRECISAO_MAXIMA_METROS = 151 # Limite de precisão para aceitar o sinal
 
 # --- Lógica de Negócio (código inalterado) ---
 FUSO_HORARIO = ZoneInfo("America/Fortaleza")
@@ -32,8 +31,7 @@ def carregar_registros():
     try:
         with open(ARQUIVO_JSON, 'r', encoding='utf-8') as f:
             content = f.read()
-            if not content:
-                return {}
+            if not content: return {}
             return json.loads(content)
     except (json.JSONDecodeError, IOError):
         return {}
@@ -45,36 +43,25 @@ def salvar_registros(registros):
 def bater_ponto(funcionario_id, localizacao_gps, status_local, precisao):
     if not funcionario_id.strip():
         return "⚠️ Por favor, insira um ID de funcionário.", "warning"
-
     registros = carregar_registros()
     agora = datetime.now(FUSO_HORARIO)
     hoje_str = agora.strftime("%Y-%m-%d")
-
     registros_funcionario = registros.get(funcionario_id, {})
     registros_do_dia = registros_funcionario.get(hoje_str, [])
-
     tipo_registro = 'entrada'
     if registros_do_dia and registros_do_dia[-1].get('tipo') == 'entrada':
         tipo_registro = 'saida'
-
     local_str = "N/A"
     if localizacao_gps and 'latitude' in localizacao_gps:
         local_str = f"Lat: {localizacao_gps['latitude']:.4f}, Lon: {localizacao_gps['longitude']:.4f}"
-
     novo_registro = {
-        "hora": agora.isoformat(),
-        "tipo": tipo_registro,
-        "localizacao_gps": local_str,
-        "status_local": status_local,
-        "precisao_gps_metros": precisao
+        "hora": agora.isoformat(), "tipo": tipo_registro, "localizacao_gps": local_str,
+        "status_local": status_local, "precisao_gps_metros": precisao
     }
-    
     registros_do_dia.append(novo_registro)
     registros_funcionario[hoje_str] = registros_do_dia
     registros[funcionario_id] = registros_funcionario
-    
     salvar_registros(registros)
-    
     mensagem = f"Ponto de '{tipo_registro.upper()}' registado às {agora.strftime('%H:%M:%S')}."
     return mensagem, "success"
 
@@ -100,9 +87,16 @@ if st.button("Bater o Ponto", type="primary", use_container_width=True):
     elif not localizacao_gps or 'latitude' not in localizacao_gps:
         st.error("Não foi possível obter a sua localização. Por favor, autorize o acesso no seu navegador e recarregue a página.", icon="🛰️")
     else:
+        # --- BLOCO CORRIGIDO ---
         precisao_gps = localizacao_gps.get('accuracy')
-        if precisao_gps is None or precisao_gps > PRECISAO_MAXIMA_METROS:
+        
+        # 1. Primeiro, verifica se a precisão foi recebida
+        if precisao_gps is None:
+            st.error("Não foi possível obter a precisão do sinal de GPS. O ponto não pode ser registado. Tente novamente.", icon="🚫")
+        # 2. Depois, verifica se a precisão está dentro do limite
+        elif precisao_gps > PRECISAO_MAXIMA_METROS:
             st.error(f"Sinal de GPS muito fraco (precisão de {precisao_gps:.0f}m). O ponto não pode ser registado. Tente novamente num local com melhor sinal.", icon="🚫")
+        # 3. Se tudo estiver correto, bate o ponto
         else:
             with st.spinner("A verificar localização..."):
                 user_coords = (localizacao_gps['latitude'], localizacao_gps['longitude'])
@@ -111,22 +105,23 @@ if st.button("Bater o Ponto", type="primary", use_container_width=True):
                 
                 status_local = "Remoto"
                 if distancia <= RAIO_PERMITIDO_METROS:
-                    st.success("Localização validada: Dentro da área permitida (Presencial).")
                     status_local = "Presencial"
-                else:
-                    st.warning("Aviso: Fora da área permitida (Remoto).")
-                    status_local = "Remoto"
                 
                 mensagem, tipo_alerta = bater_ponto(id_funcionario.lower(), localizacao_gps, status_local, precisao_gps)
-                if tipo_alerta == "success":
-                    st.success(mensagem, icon="✅")
-                else:
-                    st.warning(mensagem, icon="⚠️")
 
-# --- Funcionalidade de Relatório ---
+                if status_local == "Presencial":
+                    st.success(f"Localização validada: {status_local}", icon="✅")
+                else:
+                    st.warning(f"Fora da área da empresa: {status_local}", icon="🗺️")
+                
+                if tipo_alerta == "success":
+                    st.success(mensagem)
+                else:
+                    st.error(mensagem)
+
+# --- Funcionalidade de Relatório (código inalterado) ---
 st.divider()
 st.header("Relatório de Pontos")
-
 registros_atuais = carregar_registros()
 if not registros_atuais:
     st.info("Ainda não existem registos de ponto.")
@@ -141,11 +136,8 @@ else:
                     hora_formatada = hora_obj.strftime('%H:%M:%S')
                 else:
                     hora_formatada = 'N/D'
-
                 dados_tabela.append({
-                    'Funcionário': func_id,
-                    'Data': data,
-                    'Hora': hora_formatada,
+                    'Funcionário': func_id, 'Data': data, 'Hora': hora_formatada,
                     'Tipo': evento.get('tipo', 'N/D').capitalize(),
                     'Status Local': evento.get('status_local', 'N/D'),
                     'Precisão GPS (m)': evento.get('precisao_gps_metros'),
@@ -157,7 +149,6 @@ else:
         colunas_ordenadas = ['Funcionário', 'Data', 'Hora', 'Tipo', 'Status Local', 'Precisão GPS (m)', 'Coordenadas']
         df = df[colunas_ordenadas]
         st.dataframe(df.style.hide(axis="index"), use_container_width=True)
-
         df.to_excel(ARQUIVO_EXCEL, index=False, engine='openpyxl')
         with open(ARQUIVO_EXCEL, "rb") as file:
             st.download_button(
