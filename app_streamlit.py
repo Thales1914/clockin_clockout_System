@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-from zoneinfo import ZoneInfo # <-- MUDANÇA: Usando a biblioteca nativa do Python
+from zoneinfo import ZoneInfo
 from streamlit_geolocation import streamlit_geolocation
 from geopy.distance import geodesic
 
@@ -18,16 +18,15 @@ st.set_page_config(
 EMPRESA_NOME = "Omega Distribuidora"
 EMPRESA_LOCALIZACAO = (-3.8210554, -38.5049637)
 RAIO_PERMITIDO_METROS = 50
-PRECISAO_MAXIMA_METROS = 75
-# MUDANÇA: Define o fuso horário usando a nova biblioteca
-FUSO_HORARIO = ZoneInfo("America/Fortaleza")
+# AJUSTADO: Aumentamos o limite para aceitar sinais mais fracos
+PRECISAO_MAXIMA_METROS = 151 
 
-# --- Lógica para guardar dados num ficheiro local ---
+# --- Lógica de Negócio (código inalterado) ---
+FUSO_HORARIO = ZoneInfo("America/Fortaleza")
 ARQUIVO_JSON = "registros_ponto.json"
 ARQUIVO_EXCEL = "relatorio_ponto.xlsx"
 
 def carregar_registros():
-    """Carrega os registros do ficheiro JSON de forma segura."""
     if not os.path.exists(ARQUIVO_JSON):
         return {}
     try:
@@ -40,17 +39,14 @@ def carregar_registros():
         return {}
 
 def salvar_registros(registros):
-    """Salva os registros no ficheiro JSON."""
     with open(ARQUIVO_JSON, 'w', encoding='utf-8') as f:
         json.dump(registros, f, indent=4, ensure_ascii=False)
 
 def bater_ponto(funcionario_id, localizacao_gps, status_local, precisao):
-    """Guarda o registo de ponto, agora incluindo a precisão do GPS."""
     if not funcionario_id.strip():
         return "⚠️ Por favor, insira um ID de funcionário.", "warning"
 
     registros = carregar_registros()
-    # MUDANÇA: Captura a hora no fuso horário correto
     agora = datetime.now(FUSO_HORARIO)
     hoje_str = agora.strftime("%Y-%m-%d")
 
@@ -106,7 +102,7 @@ if st.button("Bater o Ponto", type="primary", use_container_width=True):
     else:
         precisao_gps = localizacao_gps.get('accuracy')
         if precisao_gps is None or precisao_gps > PRECISAO_MAXIMA_METROS:
-            st.error(f"Sinal de GPS muito fraco ou sem dados de precisão. O ponto não pode ser registado.", icon="🚫")
+            st.error(f"Sinal de GPS muito fraco (precisão de {precisao_gps:.0f}m). O ponto não pode ser registado. Tente novamente num local com melhor sinal.", icon="🚫")
         else:
             with st.spinner("A verificar localização..."):
                 user_coords = (localizacao_gps['latitude'], localizacao_gps['longitude'])
@@ -141,7 +137,6 @@ else:
             for evento in eventos:
                 hora_iso = evento.get('hora', '')
                 if hora_iso:
-                    # Converte a hora guardada para o fuso horário correto ao exibir
                     hora_obj = datetime.fromisoformat(hora_iso).astimezone(FUSO_HORARIO)
                     hora_formatada = hora_obj.strftime('%H:%M:%S')
                 else:
