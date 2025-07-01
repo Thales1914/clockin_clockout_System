@@ -3,7 +3,6 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-import pytz # <-- NOVO: Biblioteca para fusos horários
 from streamlit_geolocation import streamlit_geolocation
 from geopy.distance import geodesic
 
@@ -19,8 +18,6 @@ EMPRESA_NOME = "Omega Distribuidora"
 EMPRESA_LOCALIZACAO = (-3.8210554, -38.5049637)
 RAIO_PERMITIDO_METROS = 50
 PRECISAO_MAXIMA_METROS = 75
-# NOVO: Define o fuso horário correto
-FUSO_HORARIO = pytz.timezone("America/Fortaleza")
 
 # --- Lógica para guardar dados num ficheiro local ---
 ARQUIVO_JSON = "registros_ponto.json"
@@ -50,8 +47,7 @@ def bater_ponto(funcionario_id, localizacao_gps, status_local, precisao):
         return "⚠️ Por favor, insira um ID de funcionário.", "warning"
 
     registros = carregar_registros()
-    # MODIFICADO: Captura a hora no fuso horário correto
-    agora = datetime.now(FUSO_HORARIO)
+    agora = datetime.now()
     hoje_str = agora.strftime("%Y-%m-%d")
 
     registros_funcionario = registros.get(funcionario_id, {})
@@ -139,18 +135,10 @@ else:
     for func_id, dias in registros_atuais.items():
         for data, eventos in dias.items():
             for evento in eventos:
-                # MODIFICADO: Converte a hora guardada para o fuso horário correto ao exibir
-                hora_iso = evento.get('hora', '')
-                if hora_iso:
-                    hora_obj = datetime.fromisoformat(hora_iso).astimezone(FUSO_HORARIO)
-                    hora_formatada = hora_obj.strftime('%H:%M:%S')
-                else:
-                    hora_formatada = 'N/D'
-
                 dados_tabela.append({
                     'Funcionário': func_id,
                     'Data': data,
-                    'Hora': hora_formatada,
+                    'Hora': datetime.fromisoformat(evento.get('hora', '')).strftime('%H:%M:%S'),
                     'Tipo': evento.get('tipo', 'N/D').capitalize(),
                     'Status Local': evento.get('status_local', 'N/D'),
                     'Precisão GPS (m)': evento.get('precisao_gps_metros'),
