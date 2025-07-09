@@ -3,9 +3,9 @@ import os
 from datetime import datetime
 from config import FUNCIONARIOS_JSON, PONTOS_TXT, FUSO_HORARIO
 
-
-#Faz a leitura do registro de funcionários 
+#Faz a leitura do registro de funcionários
 def ler_json_funcionarios():
+    """Lê o ficheiro JSON de funcionários de forma segura."""
     if not os.path.exists(FUNCIONARIOS_JSON):
         return None, f"Erro crítico: O ficheiro '{FUNCIONARIOS_JSON}' não foi encontrado."
     try:
@@ -16,6 +16,7 @@ def ler_json_funcionarios():
 
 #Faz a leitura do arquivo em txt
 def ler_registros_txt():
+    """Lê os registros de ponto do ficheiro .txt e os transforma numa lista de dicionários."""
     if not os.path.exists(PONTOS_TXT):
         return []
     
@@ -31,9 +32,9 @@ def ler_registros_txt():
                 })
     return registros
 
-
 #Função criada para salvar os arquivos no txt, e futuramente iremos exportar esse arquivo
 def salvar_todos_registros_txt(registros):
+    """Salva a lista completa de registros no ficheiro .txt, sobrescrevendo o conteúdo."""
     with open(PONTOS_TXT, 'w', encoding='utf-8') as f:
         for registro in registros:
             linha = (
@@ -45,6 +46,7 @@ def salvar_todos_registros_txt(registros):
 
 #Função criada para a lógica de login de users
 def verificar_login(codigo, senha):
+    """Verifica se o código e a senha correspondem a um utilizador e retorna os seus dados."""
     funcionarios, erro = ler_json_funcionarios()
     if erro:
         return None, erro
@@ -57,6 +59,7 @@ def verificar_login(codigo, senha):
 
 #Função criada para a lógica de bater ponto
 def bater_ponto(codigo, nome, cargo):
+    """Regista a entrada ou saída de um funcionário."""
     agora = datetime.now(FUSO_HORARIO)
     hoje_str = agora.strftime("%Y-%m-%d")
 
@@ -81,6 +84,7 @@ def bater_ponto(codigo, nome, cargo):
 
 #Função para editar as observações que o Admin pode fazer a respeito dos pontos do fúncionarios
 def atualizar_observacao(identificador_registro, nova_observacao):
+    """Encontra um registro específico e atualiza a sua observação."""
     todos_registros = ler_registros_txt()
     
     registro_encontrado = False
@@ -96,3 +100,51 @@ def atualizar_observacao(identificador_registro, nova_observacao):
         return "Observação atualizada com sucesso.", "success"
     else:
         return "Erro: Registro não encontrado para atualização.", "error"
+
+#Função para salvar o arquivo de funcionários em JSON
+def salvar_json(caminho_arquivo, dados):
+    """Função auxiliar para salvar o ficheiro de funcionários."""
+    with open(caminho_arquivo, 'w', encoding='utf-8') as f:
+        json.dump(dados, f, indent=4, ensure_ascii=False)
+
+#Função para o admin adicionar um novo funcionário
+def adicionar_funcionario(codigo, nome, cargo, senha):
+    """Adiciona um novo funcionário (usado pelo admin)."""
+    funcionarios, erro = ler_json_funcionarios()
+    if erro:
+        return erro, "error"
+    
+    if codigo in funcionarios:
+        return f"O código '{codigo}' já está em uso.", "warning"
+    
+    funcionarios[codigo] = {"nome": nome, "cargo": cargo, "senha": senha, "role": "employee"}
+    salvar_json(FUNCIONARIOS_JSON, funcionarios)
+    return f"Funcionário '{nome}' adicionado com sucesso.", "success"
+
+#Função para o admin remover um funcionário
+def remover_funcionario(codigo):
+    """Remove um funcionário (usado pelo admin)."""
+    funcionarios, erro = ler_json_funcionarios()
+    if erro:
+        return erro, "error"
+
+    if codigo in funcionarios and codigo != "admin":
+        del funcionarios[codigo]
+        salvar_json(FUNCIONARIOS_JSON, funcionarios)
+        return f"Funcionário com código '{codigo}' removido.", "success"
+    else:
+        return "Funcionário não encontrado ou não pode ser removido.", "error"
+
+#Função para determinar qual a próxima ação do funcionário (Entrada ou Saída)
+def obter_proximo_tipo_ponto(codigo):
+    """Verifica o último registro do dia para determinar a próxima ação."""
+    agora = datetime.now(FUSO_HORARIO)
+    hoje_str = agora.strftime("%Y-%m-%d")
+
+    todos_registros = ler_registros_txt()
+    registros_do_dia = [r for r in todos_registros if r['Código'] == codigo and r['Data'] == hoje_str]
+
+    if registros_do_dia and registros_do_dia[-1]['Tipo'] == 'Entrada':
+        return 'Saída'
+    else:
+        return 'Entrada'
