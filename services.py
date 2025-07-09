@@ -1,13 +1,11 @@
-# services.py
 import json
 import os
 from datetime import datetime
 from config import FUNCIONARIOS_JSON, PONTOS_TXT, FUSO_HORARIO
 
-# --- Funções de Gestão de Ficheiros ---
 
+#Faz a leitura do registro de funcionários 
 def ler_json_funcionarios():
-    """Lê o ficheiro JSON de funcionários de forma segura."""
     if not os.path.exists(FUNCIONARIOS_JSON):
         return None, f"Erro crítico: O ficheiro '{FUNCIONARIOS_JSON}' não foi encontrado."
     try:
@@ -16,8 +14,8 @@ def ler_json_funcionarios():
     except (json.JSONDecodeError, IOError) as e:
         return None, f"Erro ao ler o ficheiro '{FUNCIONARIOS_JSON}': {e}"
 
+#Faz a leitura do arquivo em txt
 def ler_registros_txt():
-    """Lê os registros de ponto do ficheiro .txt e os transforma numa lista de dicionários."""
     if not os.path.exists(PONTOS_TXT):
         return []
     
@@ -25,46 +23,44 @@ def ler_registros_txt():
     with open(PONTOS_TXT, 'r', encoding='utf-8') as f:
         for linha in f:
             partes = linha.strip().split('|')
-            if len(partes) == 6:
+            if len(partes) >= 6:
                 registros.append({
                     "Código": partes[0], "Nome": partes[1], "Cargo": partes[2],
-                    "Data": partes[3], "Hora": partes[4], "Tipo": partes[5]
+                    "Data": partes[3], "Hora": partes[4], "Tipo": partes[5],
+                    "Observação": partes[6] if len(partes) > 6 else ""
                 })
     return registros
 
-def salvar_registro_txt(novo_registro):
-    """Adiciona (append) um novo registro ao ficheiro .txt."""
-    linha = (
-        f"{novo_registro['Código']}|{novo_registro['Nome']}|"
-        f"{novo_registro['Cargo']}|{novo_registro['Data']}|"
-        f"{novo_registro['Hora']}|{novo_registro['Tipo']}\n"
-    )
-    with open(PONTOS_TXT, 'a', encoding='utf-8') as f:
-        f.write(linha)
 
-# --- Funções de Lógica de Negócio ---
+#Função criada para salvar os arquivos no txt, e futuramente iremos exportar esse arquivo
+def salvar_todos_registros_txt(registros):
+    with open(PONTOS_TXT, 'w', encoding='utf-8') as f:
+        for registro in registros:
+            linha = (
+                f"{registro['Código']}|{registro['Nome']}|{registro['Cargo']}|"
+                f"{registro['Data']}|{registro['Hora']}|{registro['Tipo']}|"
+                f"{registro.get('Observação', '')}\n"
+            )
+            f.write(linha)
 
-def bater_ponto(codigo):
-    """
-    Regista a entrada ou saída de um funcionário.
-    Retorna uma tupla: (mensagem, tipo_da_mensagem)
-    Ex: ("Ponto registado!", "success") ou ("Código não encontrado", "error")
-    """
+#Função criada para a lógica de login de users
+def verificar_login(codigo, senha):
     funcionarios, erro = ler_json_funcionarios()
     if erro:
-        return erro, "error"
+        return None, erro
 
-    if codigo not in funcionarios:
-        return f"Código de funcionário '{codigo}' não encontrado.", "error"
+    user_data = funcionarios.get(codigo)
+    if user_data and user_data['senha'] == senha:
+        return user_data, None
+    else:
+        return None, "Código ou senha inválidos."
 
-    nome_funcionario = funcionarios[codigo]["nome"]
-    cargo_funcionario = funcionarios[codigo]["cargo"]
-    
-    todos_registros = ler_registros_txt()
-    
+#Função criada para a lógica de bater ponto
+def bater_ponto(codigo, nome, cargo):
     agora = datetime.now(FUSO_HORARIO)
     hoje_str = agora.strftime("%Y-%m-%d")
 
+    todos_registros = ler_registros_txt()
     registros_do_dia = [r for r in todos_registros if r['Código'] == codigo and r['Data'] == hoje_str]
 
     tipo_registro = 'Entrada'
@@ -72,11 +68,31 @@ def bater_ponto(codigo):
         tipo_registro = 'Saída'
 
     novo_registro = {
-        "Código": codigo, "Nome": nome_funcionario, "Cargo": cargo_funcionario,
-        "Data": hoje_str, "Hora": agora.strftime("%H:%M:%S"), "Tipo": tipo_registro
+        "Código": codigo, "Nome": nome, "Cargo": cargo,
+        "Data": hoje_str, "Hora": agora.strftime("%H:%M:%S"), "Tipo": tipo_registro,
+        "Observação": ""
     }
     
-    salvar_registro_txt(novo_registro)
+    todos_registros.append(novo_registro)
+    salvar_todos_registros_txt(todos_registros)
     
-    mensagem_sucesso = f"Ponto de '{tipo_registro}' registado para {nome_funcionario} às {novo_registro['Hora']}."
+    mensagem_sucesso = f"Ponto de '{tipo_registro}' registado para {nome} às {novo_registro['Hora']}."
     return mensagem_sucesso, "success"
+
+#Função para editar as observações que o Admin pode fazer a respeito dos pontos do fúncionarios
+def atualizar_observacao(identificador_registro, nova_observacao):
+    todos_registros = ler_registros_txt()
+    
+    registro_encontrado = False
+    for registro in todos_registros:
+        id_atual = f"{registro['Código']}-{registro['Data']}-{registro['Hora']}"
+        if id_atual == identificador_registro:
+            registro['Observação'] = nova_observacao
+            registro_encontrado = True
+            break
+            
+    if registro_encontrado:
+        salvar_todos_registros_txt(todos_registros)
+        return "Observação atualizada com sucesso.", "success"
+    else:
+        return "Erro: Registro não encontrado para atualização.", "error"

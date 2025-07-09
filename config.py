@@ -1,10 +1,9 @@
-# config.py
 from zoneinfo import ZoneInfo
 
-# --- Configurações de Fuso Horário ---
+#definição de fuso
 FUSO_HORARIO = ZoneInfo("America/Fortaleza")
 
-# --- Nomes dos Ficheiros de Dados ---
+#definição dos ficheiros de dados
 FUNCIONARIOS_JSON = "funcionarios.json"
 PONTOS_TXT = "registros_ponto.txt"
 RELATORIO_TXT = "relatorio_ponto.txt"

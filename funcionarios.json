@@ -1,10 +1,20 @@
 {
+    "admin": {
+        "nome": "Administrador",
+        "cargo": "Sistema",
+        "senha": "admin123",
+        "role": "admin"
+    },
     "101": {
         "nome": "Carlos",
-        "cargo": "RH"
+        "cargo": "RH",
+        "senha": "123",
+        "role": "employee"
     },
     "102": {
         "nome": "Eduardo",
-        "cargo": "RH"
+        "cargo": "RH",
+        "senha": "456",
+        "role": "employee"
     }
 }
