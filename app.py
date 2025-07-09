@@ -23,7 +23,6 @@ from config import RELATORIO_TXT
 # Ele define as propriedades da aba do navegador e o layout da página.
 st.set_page_config(
     page_title="Ponto Omega",
-    page_icon="🔵",
     layout="centered" # 'centered' mantém a interface num layout de largura fixa e centralizado.
 )
 
@@ -93,8 +92,8 @@ def tela_funcionario():
         # Exibe a mensagem de sucesso ou erro retornada pela função de lógica.
         if tipo == "success":
             st.success(mensagem)
-            # Aguarda 1 segundo para que o utilizador possa ler a mensagem.
-            time.sleep(1)
+            # Aguarda 4 segundo para que o utilizador possa ler a mensagem.
+            time.sleep(4)
             # Recarrega a página para atualizar o texto do botão para a próxima ação.
             st.rerun()
         else:
