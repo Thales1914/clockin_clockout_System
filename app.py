@@ -49,23 +49,54 @@ def tela_de_login():
 
 def tela_funcionario():
     st.title(f"🔵 Bem-vindo, {st.session_state.user_info['nome']}!")
-    st.header("Registo de Ponto")
-    proximo_evento = obter_proximo_evento(st.session_state.user_info['codigo'])
-    if proximo_evento == "Jornada Finalizada":
-        st.info("Sua jornada de hoje já foi completamente registada. Bom descanso!")
-    else:
-        if st.button(f"Confirmar {proximo_evento}", type="primary", use_container_width=True):
-            mensagem, tipo = bater_ponto(
-                st.session_state.user_info['codigo'],
-                st.session_state.user_info['nome'],
-                st.session_state.user_info['cargo']
-            )
-            if tipo == "success":
-                st.success(mensagem)
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(mensagem)
+
+    tab1, tab2 = st.tabs(["Registrar Ponto", "Meus Registros"])
+
+    with tab1:
+        st.header("Registro de Ponto")
+        proximo_evento = obter_proximo_evento(st.session_state.user_info['codigo'])
+        if proximo_evento == "Jornada Finalizada":
+            st.info("Sua jornada de hoje já foi completamente registrada. Bom descanso!")
+        else:
+            if st.button(f"Confirmar {proximo_evento}", type="primary", use_container_width=True):
+                mensagem, tipo = bater_ponto(
+                    st.session_state.user_info['codigo'],
+                    st.session_state.user_info['nome'],
+                    st.session_state.user_info['cargo']
+                )
+                if tipo == "success":
+                    st.success(mensagem)
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(mensagem)
+
+    with tab2:
+        st.header("Histórico dos Meus Pontos")
+        
+        df_todos_registros = ler_registros_df()
+        
+        meus_registros_df = df_todos_registros[df_todos_registros['Código'] == st.session_state.user_info['codigo']]
+
+        if meus_registros_df.empty:
+            st.info("Você ainda não possui registros de ponto.")
+        else:
+            df_visualizacao = meus_registros_df.sort_values(by=["Data", "Hora"], ascending=False)
+            
+            for _, row in df_visualizacao.iterrows():
+                with st.container(border=True):
+                    diff = row['Diferença (min)']
+                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "blue"
+                    texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
+                    
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 4])
+                    col1.text(f"Evento: {row['Descrição']}")
+                    col2.text(f"Data: {row['Data']}")
+                    col3.text(f"Hora: {row['Hora']}")
+                    col4.markdown(f"Status: **<font color='{cor_diff}'>{texto_diff}</font>**", unsafe_allow_html=True)
+                    
+                    if row.get('Observação'):
+                        st.markdown(f"**Obs:** *{row['Observação']}*")
 
 def tela_admin():
     st.title("🔵 Painel do Administrador")
