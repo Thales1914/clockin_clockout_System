@@ -1,7 +1,7 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime, time
-from config import DATABASE_FILE, FUSO_HORARIO, HORARIOS_PADRAO, TOLERANCIA_MINUTOS
+from config import DATABASE_FILE, FUSO_HORARIO, HORARIOS_PADRAO
 import hashlib
 from contextlib import contextmanager
 import numpy as np
@@ -59,12 +59,7 @@ def init_db():
         
         cursor.execute("SELECT COUNT(*) FROM empresas")
         if cursor.fetchone()[0] == 0:
-            initial_empresas = [
-                ('Ômega Barroso',),
-                ('Ômega Matriz',),
-                ('Ômega Cariri',),
-                ('Ômega Sobral',)
-            ]
+            initial_empresas = [('Omega Principal',), ('Omega Filial',)]
             cursor.executemany("INSERT INTO empresas (nome_empresa) VALUES (?)", initial_empresas)
 
         cursor.execute("SELECT COUNT(*) FROM funcionarios")
@@ -124,21 +119,12 @@ def bater_ponto(codigo, nome, cargo):
 
     hora_prevista = HORARIOS_PADRAO[proximo_evento]
     datetime_previsto = agora.replace(hour=hora_prevista.hour, minute=hora_prevista.minute, second=0, microsecond=0)
-    
-    diferenca_bruta_min = round((agora - datetime_previsto).total_seconds() / 60)
-    
-    if abs(diferenca_bruta_min) <= TOLERANCIA_MINUTOS:
-        diferenca_final_min = 0
-    else:
-        if diferenca_bruta_min > 0:
-            diferenca_final_min = diferenca_bruta_min - TOLERANCIA_MINUTOS
-        else:
-            diferenca_final_min = diferenca_bruta_min + TOLERANCIA_MINUTOS
-            
+    diferenca_minutos = round((agora - datetime_previsto).total_seconds() / 60)
+
     novo_registro = {
         "id": f"{codigo}-{agora.isoformat()}", "codigo_funcionario": codigo, "nome": nome,
         "cargo": cargo, "data": hoje_str, "hora": agora.strftime("%H:%M:%S"),
-        "descricao": proximo_evento, "diferenca_min": diferenca_final_min, "observacao": ""
+        "descricao": proximo_evento, "diferenca_min": diferenca_minutos, "observacao": ""
     }
 
     with get_db_connection() as conn:
@@ -146,20 +132,8 @@ def bater_ponto(codigo, nome, cargo):
             cursor = conn.cursor()
             cursor.execute("INSERT INTO registros VALUES (:id, :codigo_funcionario, :nome, :cargo, :data, :hora, :descricao, :diferenca_min, :observacao)", novo_registro)
     
-    msg_extra = ""
-    if diferenca_final_min != 0:
-        if diferenca_final_min > 0:
-            msg_extra = f" ({diferenca_final_min} min de atraso)"
-        else:
-            msg_extra = f" ({-diferenca_final_min} min de adiantamento)"
-
-    status_final = " (em ponto)"
-    if diferenca_final_min != 0:
-        status_final = ""
-    elif diferenca_bruta_min != 0:
-        status_final = " (dentro da tolerância, registrado como 'em ponto')"
-        
-    return f"'{proximo_evento}' registado para {nome} às {novo_registro['hora']}{msg_extra}{status_final}.", "success"
+    msg_extra = f" ({diferenca_minutos} min de atraso)" if diferenca_minutos > 0 else f" ({-diferenca_minutos} min de adiantamento)" if diferenca_minutos < 0 else " (em ponto)"
+    return f"'{proximo_evento}' registado para {nome} às {novo_registro['hora']}{msg_extra}.", "success"
 
 def ler_registros_df():
     with get_db_connection() as conn:
@@ -191,18 +165,8 @@ def atualizar_registro(id_registro, novo_horario=None, nova_observacao=None):
                             data_registro = datetime.strptime(row['data'], "%Y-%m-%d")
                             datetime_previsto = data_registro.replace(hour=hora_prevista.hour, minute=hora_prevista.minute)
                             datetime_novo = data_registro.replace(hour=novo_horario_obj.hour, minute=novo_horario_obj.minute, second=novo_horario_obj.second)
-                            
-                            diferenca_bruta_min = round((datetime_novo - datetime_previsto).total_seconds() / 60)
-
-                            if abs(diferenca_bruta_min) <= TOLERANCIA_MINUTOS:
-                                diferenca_final_min = 0
-                            else:
-                                if diferenca_bruta_min > 0:
-                                    diferenca_final_min = diferenca_bruta_min - TOLERANCIA_MINUTOS
-                                else:
-                                    diferenca_final_min = diferenca_bruta_min + TOLERANCIA_MINUTOS
-                            
-                            cursor.execute("UPDATE registros SET hora = ?, diferenca_min = ? WHERE id = ?", (novo_horario, diferenca_final_min, id_registro))
+                            diferenca_minutos = round((datetime_novo - datetime_previsto).total_seconds() / 60)
+                            cursor.execute("UPDATE registros SET hora = ?, diferenca_min = ? WHERE id = ?", (novo_horario, diferenca_minutos, id_registro))
 
     except ValueError:
         return "Formato de hora inválido. Use HH:MM:SS.", "error"
@@ -293,8 +257,6 @@ def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     df_final = df_final[colunas_finais]
     
     df_final.rename(columns={'Código': 'Código do Funcionário', 'Nome': 'Nome do Funcionário'}, inplace=True)
-
-    df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y')
 
     return df_final
 

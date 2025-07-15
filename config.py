@@ -8,6 +8,7 @@ FUSO_HORARIO = ZoneInfo("America/Fortaleza")
 DATABASE_FILE = "ponto.db"
 RELATORIO_CSV = "relatorio_ponto.csv"
 
+TOLERANCIA_MINUTOS = 5
 
 HORARIOS_PADRAO = {
     "Início do Expediente": time(8, 0, 0),
