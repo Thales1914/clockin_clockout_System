@@ -210,7 +210,7 @@ def tela_admin():
                 with st.container(border=True):
                     data_br = row['Data_dt'].strftime('%d/%m/%Y')
                     diff = row['Diferença (min)']
-                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "blue"
+                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "yellow"
                     texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
                     col1, col2, col3, col4, col5 = st.columns([2, 3, 2, 3, 1])
                     col1.text(f"Nome: {row['Nome']}")
