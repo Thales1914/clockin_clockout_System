@@ -12,7 +12,5 @@ TOLERANCIA_MINUTOS = 5
 
 HORARIOS_PADRAO = {
     "Início do Expediente": time(8, 0, 0),
-    "Início do Almoço": time(11, 0, 0),
-    "Fim do Almoço": time(12, 0, 0),
     "Fim do Expediente": time(18, 0, 0)
 }

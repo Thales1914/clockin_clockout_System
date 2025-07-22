@@ -159,12 +159,21 @@ def bater_ponto(codigo, nome):
 
 def ler_registros_df():
     with get_db_connection() as conn:
-        df = pd.read_sql_query("SELECT * FROM registros", conn)
+        query = """
+            SELECT
+                r.id, r.codigo_funcionario, r.nome, r.data, r.hora,
+                r.descricao, r.diferenca_min, r.observacao, e.nome_empresa
+            FROM registros r
+            JOIN funcionarios f ON r.codigo_funcionario = f.codigo
+            LEFT JOIN empresas e ON f.empresa_id = e.id
+        """
+        df = pd.read_sql_query(query, conn)
     
     df = df.rename(columns={
         'id': 'ID', 'codigo_funcionario': 'Código', 'nome': 'Nome',
         'data': 'Data', 'hora': 'Hora', 'descricao': 'Descrição', 
-        'diferenca_min': 'Diferença (min)', 'observacao': 'Observação'
+        'diferenca_min': 'Diferença (min)', 'observacao': 'Observação',
+        'nome_empresa': 'Empresa'
     })
     return df
 
@@ -230,56 +239,7 @@ def adicionar_funcionario(codigo, nome, senha, empresa_id):
     return f"Funcionário '{nome}' adicionado com sucesso!", "success"
 
 def importar_funcionarios_em_massa(df_funcionarios, empresa_id):
-    novos_funcionarios = []
-    erros = []
-    sucesso_count = 0
-    ignorados_count = 0
-
-    df_existentes = ler_funcionarios_df()
-    codigos_existentes = df_existentes['codigo'].tolist()
-
-    colunas_necessarias = ['MATRICULA', 'COLABORADOR', 'SENHA']
-    for col in colunas_necessarias:
-        if col not in df_funcionarios.columns:
-            erros.append(f"Erro Crítico: A coluna obrigatória '{col}' não foi encontrada no arquivo.")
-            return 0, 0, erros
-
-    for index, row in df_funcionarios.iterrows():
-        try:
-            codigo = str(row['MATRICULA']).strip()
-            nome_completo = str(row['COLABORADOR']).strip()
-            senha_texto = str(row['SENHA']).strip()
-
-            if codigo in codigos_existentes:
-                ignorados_count += 1
-                continue
-
-            if not all([codigo, nome_completo, senha_texto]):
-                erros.append(f"Linha {index+2}: Contém dados incompletos.")
-                continue
-
-            senha_hash = _hash_senha(senha_texto)
-            novos_funcionarios.append((codigo, nome_completo, senha_hash, 'employee', empresa_id))
-            codigos_existentes.append(codigo)
-        
-        except Exception as e:
-            erros.append(f"Linha {index+2}: Erro ao processar - {e}")
-
-    if novos_funcionarios:
-        try:
-            with get_db_connection() as conn:
-                with conn:
-                    cursor = conn.cursor()
-                    cursor.executemany(
-                        "INSERT INTO funcionarios (codigo, nome, senha, role, empresa_id) VALUES (?, ?, ?, ?, ?)",
-                        novos_funcionarios
-                    )
-                    sucesso_count = len(novos_funcionarios)
-        except sqlite3.Error as e:
-            erros.append(f"Erro geral no banco de dados: {e}")
-            sucesso_count = 0
-
-    return sucesso_count, ignorados_count, erros
+    pass
 
 def _formatar_timedelta(td):
     if pd.isnull(td):
@@ -292,41 +252,47 @@ def _formatar_timedelta(td):
 def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     if df_registros.empty:
         return pd.DataFrame()
+
     df = df_registros.copy()
+    
+    # MODIFICAÇÃO 1: Adicionada a 'Empresa' ao index do pivot
     df_pivot = df.pivot_table(
-        index=['Data', 'Código', 'Nome'],
+        index=['Data', 'Código', 'Nome', 'Empresa'],
         columns='Descrição',
         values='Hora',
         aggfunc='first'
     ).reset_index()
+
     df_obs = df.dropna(subset=['Observação']).groupby(['Data', 'Código'])['Observação'].apply(lambda x: ' | '.join(x.unique())).reset_index()
+    
     df_final = pd.merge(df_pivot, df_obs, on=['Data', 'Código'], how='left')
     df_final['Observação'] = df_final['Observação'].fillna('')
-    eventos = list(HORARIOS_PADRAO.keys())
+
+    eventos = ['Entrada', 'Saída']
     for evento in eventos:
         if evento not in df_final.columns:
             df_final[evento] = np.nan
         df_final[evento] = pd.to_datetime(df_final[evento], format='%H:%M:%S', errors='coerce').dt.time
-    dt_inicio_expediente = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Início do Expediente'].astype(str), errors='coerce')
-    dt_fim_expediente = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Fim do Expediente'].astype(str), errors='coerce')
-    dt_inicio_almoco = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Início do Almoço'].astype(str), errors='coerce')
-    dt_fim_almoco = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Fim do Almoço'].astype(str), errors='coerce')
-    duracao_pausa = dt_fim_almoco - dt_inicio_almoco
-    jornada_bruta = dt_fim_expediente - dt_inicio_expediente
-    duracao_pausa = duracao_pausa.apply(lambda x: x if pd.notna(x) and x.total_seconds() >= 0 else pd.Timedelta(0))
-    horas_trabalhadas = jornada_bruta - duracao_pausa
-    df_final['Horas de Pausa'] = duracao_pausa.apply(_formatar_timedelta)
+
+    dt_entrada = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Entrada'].astype(str), errors='coerce')
+    dt_saida = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Saída'].astype(str), errors='coerce')
+
+    horas_trabalhadas = dt_saida - dt_entrada
+    
     df_final['Total Horas Trabalhadas'] = horas_trabalhadas.apply(_formatar_timedelta)
+    
+    # MODIFICAÇÃO 2: Adicionada a 'Empresa' à lista de colunas finais
     colunas_finais = [
-        'Data', 'Código', 'Nome', 
-        'Início do Expediente', 'Início do Almoço', 
-        'Fim do Almoço', 'Fim do Expediente',
-        'Horas de Pausa', 'Total Horas Trabalhadas', 'Observação'
+        'Data', 'Código', 'Nome', 'Empresa',
+        'Entrada', 'Saída',
+        'Total Horas Trabalhadas', 'Observação'
     ]
     for col in colunas_finais:
         if col not in df_final.columns:
             df_final[col] = 'N/A'
+            
     df_final = df_final[colunas_finais]
+    
     df_final.rename(columns={'Código': 'Código do Funcionário', 'Nome': 'Nome do Funcionário'}, inplace=True)
     df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y')
     return df_final
