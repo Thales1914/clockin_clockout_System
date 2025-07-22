@@ -106,7 +106,7 @@ def tela_funcionario():
                 with st.container(border=True):
                     data_br = datetime.strptime(row['Data'], '%Y-%m-%d').strftime('%d/%m/%Y')
                     diff = row['Diferença (min)']
-                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "Yellow"
+                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "lightgray"
                     texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
                     col1, col2, col3, col4 = st.columns([3, 2, 2, 4])
                     col1.text(f"Evento: {row['Descrição']}")
@@ -147,15 +147,19 @@ def tela_admin():
         funcionarios_df = ler_funcionarios_df()
         df_registros = ler_registros_df()
         if empresa_selecionada_id != 0:
-            codigos_funcionarios_empresa = funcionarios_df[funcionarios_df['empresa_id'] == empresa_selecionada_id]['codigo'].tolist()
+            df_filtrado_empresa = df_registros[df_registros['Empresa'] == opcoes_empresas[empresa_selecionada_id]]
         else:
-            codigos_funcionarios_empresa = funcionarios_df[funcionarios_df['role'] == 'employee']['codigo'].tolist()
-        df_filtrado_empresa = df_registros[df_registros['Código'].isin(codigos_funcionarios_empresa)]
-        df_filtrado_empresa['Data_dt'] = pd.to_datetime(df_filtrado_empresa['Data'], format='%Y-%m-%d').dt.date
-        df_filtrado_data = df_filtrado_empresa[(df_filtrado_empresa['Data_dt'] >= data_inicio) & (df_filtrado_empresa['Data_dt'] <= data_fim)].copy()
+            df_filtrado_empresa = df_registros.copy()
+            
+        df_filtrado_empresa['Data_dt'] = pd.to_datetime(df_filtrado_empresa['Data'], format='%Y-%m-%d', errors='coerce').dt.date
+        df_filtrado_data = df_filtrado_empresa.dropna(subset=['Data_dt'])
+        df_filtrado_data = df_filtrado_data[(df_filtrado_data['Data_dt'] >= data_inicio) & (df_filtrado_data['Data_dt'] <= data_fim)].copy()
+        
+        codigos_da_empresa = funcionarios_df[funcionarios_df['empresa_id'] == empresa_selecionada_id]['codigo'].tolist() if empresa_selecionada_id != 0 else funcionarios_df['codigo'].tolist()
         opcoes_funcionarios_filtrados = {"Todos": "Todos"}
-        for _, row in funcionarios_df[funcionarios_df['codigo'].isin(codigos_funcionarios_empresa)].iterrows():
+        for _, row in funcionarios_df[funcionarios_df['codigo'].isin(codigos_da_empresa)].iterrows():
             opcoes_funcionarios_filtrados[row['codigo']] = f"{row['nome']} (Cód: {row['codigo']})"
+            
         codigo_selecionado = st.selectbox(
             "Filtrar por funcionário (opcional):",
             options=list(opcoes_funcionarios_filtrados.keys()),
@@ -176,14 +180,17 @@ def tela_admin():
                     diff = row['Diferença (min)']
                     cor_diff = "green" if diff == 0 else "red" if diff > 0 else "lightgray"
                     texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
-                    col1, col2, col3, col4, col5 = st.columns([2, 3, 2, 3, 1])
+                    col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 3, 1])
                     col1.text(f"Nome: {row['Nome']}")
-                    col2.text(f"Evento: {row['Descrição']}")
-                    col3.text(f"Data: {data_br}")
-                    col4.markdown(f"Hora: {row['Hora']} | Status: **<font color='{cor_diff}'>{texto_diff}</font>**", unsafe_allow_html=True)
-                    if col5.button("Editar", key=f"edit_{registro_id}"):
-                        st.session_state.edit_id = registro_id
-                        st.rerun()
+                    col2.text(f"Empresa: {row['Empresa']}")
+                    col3.text(f"Evento: {row['Descrição']}")
+                    col4.text(f"Data: {data_br}")
+                    col5.markdown(f"Hora: {row['Hora']} | Status: <font color='{cor_diff}'>**{texto_diff}**</font>", unsafe_allow_html=True)
+                    
+                    with col6:
+                        if st.button("Editar", key=f"edit_{registro_id}"):
+                            st.session_state.edit_id = registro_id
+                            st.rerun()
                     if st.session_state.edit_id == registro_id:
                         edit_col1, edit_col2 = st.columns(2)
                         with edit_col1:
@@ -254,13 +261,9 @@ def tela_admin():
             if arquivo_csv is not None and empresa_id_importacao is not None:
                 with st.spinner("Processando arquivo..."):
                     try:
-                        # --- CORREÇÃO APLICADA AQUI ---
-                        df_para_importar = pd.read_csv(arquivo_csv, sep=';')
-                        
+                        df_para_importar = pd.read_csv(arquivo_csv, sep=';', encoding='latin-1')
                         df_para_importar.columns = [col.strip().upper() for col in df_para_importar.columns]
-                        
                         sucesso, ignorados, erros = importar_funcionarios_em_massa(df_para_importar, empresa_id_importacao)
-                        
                         st.success(f"{sucesso} funcionários importados com sucesso!")
                         if ignorados > 0:
                             st.warning(f"{ignorados} funcionários foram ignorados (matrícula já existente).")

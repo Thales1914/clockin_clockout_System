@@ -239,7 +239,47 @@ def adicionar_funcionario(codigo, nome, senha, empresa_id):
     return f"Funcionário '{nome}' adicionado com sucesso!", "success"
 
 def importar_funcionarios_em_massa(df_funcionarios, empresa_id):
-    pass
+    novos_funcionarios = []
+    erros = []
+    sucesso_count = 0
+    ignorados_count = 0
+    df_existentes = ler_funcionarios_df()
+    codigos_existentes = df_existentes['codigo'].tolist()
+    colunas_necessarias = ['MATRICULA', 'COLABORADOR', 'SENHA']
+    for col in colunas_necessarias:
+        if col not in df_funcionarios.columns:
+            erros.append(f"Erro Crítico: A coluna obrigatória '{col}' não foi encontrada no arquivo.")
+            return 0, 0, erros
+    for index, row in df_funcionarios.iterrows():
+        try:
+            codigo = str(row['MATRICULA']).strip()
+            nome_completo = str(row['COLABORADOR']).strip()
+            senha_texto = str(row['SENHA']).strip()
+            if codigo in codigos_existentes:
+                ignorados_count += 1
+                continue
+            if not all([codigo, nome_completo, senha_texto]):
+                erros.append(f"Linha {index+2}: Contém dados incompletos.")
+                continue
+            senha_hash = _hash_senha(senha_texto)
+            novos_funcionarios.append((codigo, nome_completo, senha_hash, 'employee', empresa_id))
+            codigos_existentes.append(codigo)
+        except Exception as e:
+            erros.append(f"Linha {index+2}: Erro ao processar - {e}")
+    if novos_funcionarios:
+        try:
+            with get_db_connection() as conn:
+                with conn:
+                    cursor = conn.cursor()
+                    cursor.executemany(
+                        "INSERT INTO funcionarios (codigo, nome, senha, role, empresa_id) VALUES (?, ?, ?, ?, ?)",
+                        novos_funcionarios
+                    )
+                    sucesso_count = len(novos_funcionarios)
+        except sqlite3.Error as e:
+            erros.append(f"Erro geral no banco de dados: {e}")
+            sucesso_count = 0
+    return sucesso_count, ignorados_count, erros
 
 def _formatar_timedelta(td):
     if pd.isnull(td):
@@ -252,36 +292,25 @@ def _formatar_timedelta(td):
 def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     if df_registros.empty:
         return pd.DataFrame()
-
     df = df_registros.copy()
-    
-    # MODIFICAÇÃO 1: Adicionada a 'Empresa' ao index do pivot
     df_pivot = df.pivot_table(
         index=['Data', 'Código', 'Nome', 'Empresa'],
         columns='Descrição',
         values='Hora',
         aggfunc='first'
     ).reset_index()
-
     df_obs = df.dropna(subset=['Observação']).groupby(['Data', 'Código'])['Observação'].apply(lambda x: ' | '.join(x.unique())).reset_index()
-    
     df_final = pd.merge(df_pivot, df_obs, on=['Data', 'Código'], how='left')
     df_final['Observação'] = df_final['Observação'].fillna('')
-
     eventos = ['Entrada', 'Saída']
     for evento in eventos:
         if evento not in df_final.columns:
             df_final[evento] = np.nan
         df_final[evento] = pd.to_datetime(df_final[evento], format='%H:%M:%S', errors='coerce').dt.time
-
     dt_entrada = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Entrada'].astype(str), errors='coerce')
     dt_saida = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Saída'].astype(str), errors='coerce')
-
     horas_trabalhadas = dt_saida - dt_entrada
-    
     df_final['Total Horas Trabalhadas'] = horas_trabalhadas.apply(_formatar_timedelta)
-    
-    # MODIFICAÇÃO 2: Adicionada a 'Empresa' à lista de colunas finais
     colunas_finais = [
         'Data', 'Código', 'Nome', 'Empresa',
         'Entrada', 'Saída',
@@ -290,9 +319,7 @@ def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     for col in colunas_finais:
         if col not in df_final.columns:
             df_final[col] = 'N/A'
-            
     df_final = df_final[colunas_finais]
-    
     df_final.rename(columns={'Código': 'Código do Funcionário', 'Nome': 'Nome do Funcionário'}, inplace=True)
     df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y')
     return df_final
