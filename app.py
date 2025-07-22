@@ -13,7 +13,8 @@ from services import (
     adicionar_funcionario,
     gerar_relatorio_organizado_df,
     gerar_arquivo_excel,
-    ler_empresas
+    ler_empresas,
+    importar_funcionarios_em_massa
 )
 
 init_db()
@@ -27,52 +28,24 @@ st.set_page_config(
 def carregar_css_customizado():
     st.markdown("""
         <style>
-            div[data-testid="stTextInput"] {
-                max-width: 450px;
-                margin: auto;
-            }
-            div[data-testid="stButton"] {
-                max-width: 450px;
-                margin: auto;
-            }
-
-           
+            div[data-testid="stTextInput"] { max-width: 450px; margin: auto; }
+            div[data-testid="stButton"] { max-width: 450px; margin: auto; }
             div[data-testid="stVerticalBlock"] div[data-testid="stContainer"][style*="border: 1px solid"] {
-                padding-top: 1em !important;
-                padding-bottom: 1em !important;
-                margin-bottom: 10px !important;
+                padding-top: 1em !important; padding-bottom: 1em !important; margin-bottom: 10px !important;
             }
-
-            div[data-testid="stAlert"][kind="info"] {
-                background-color: #1a2a47;
-                border-radius: 10px;
-            }
-
-           
-            button[data-testid="stTab"][aria-selected="true"] {
-                color: #FFFFFF;
-            }
-            div[data-testid="stTabs"] button[aria-selected="true"]::after {
-                background-color: #FFFFFF;
-            }
-
-        
+            div[data-testid="stAlert"][kind="info"] { background-color: #262730; border-radius: 10px; }
+            button[data-testid="stTab"][aria-selected="true"] { color: #FFFFFF; }
+            div[data-testid="stTabs"] button[aria-selected="true"]::after { background-color: #FFFFFF; }
             div[data-testid="stFormSubmitButton"] button {
-                background-color: #F27421; /* Cor primária laranja */
-                color: #FFFFFF;
-                border: none;
+                background-color: #F27421; color: #FFFFFF; border: none;
             }
             div[data-testid="stFormSubmitButton"] button:hover {
-                background-color: #d8661c; /* Laranja um pouco mais escuro no hover */
-                color: #FFFFFF;
-                border: none;
+                background-color: #d8661c; color: #FFFFFF; border: none;
             }
         </style>
     """, unsafe_allow_html=True)
 
-
 carregar_css_customizado()
-
 
 if 'user_info' not in st.session_state:
     st.session_state.user_info = None
@@ -85,7 +58,7 @@ def tela_de_login():
     with st.container():
         _ , col2, _ = st.columns([1, 2, 1])
         with col2:
-            st.image("assets/logo.png", width=590)
+            st.image("assets/logo.png", width=350)
             st.text("") 
             codigo = st.text_input("Seu Código", label_visibility="collapsed", placeholder="Seu Código")
             senha = st.text_input("Sua Senha", type="password", label_visibility="collapsed", placeholder="Sua Senha")
@@ -113,8 +86,7 @@ def tela_funcionario():
             if st.button(f"Confirmar {proximo_evento}", type="primary", use_container_width=True):
                 mensagem, tipo = bater_ponto(
                     st.session_state.user_info['codigo'],
-                    st.session_state.user_info['nome'],
-                    st.session_state.user_info['cargo']
+                    st.session_state.user_info['nome']
                 )
                 if tipo == "success":
                     st.success(mensagem)
@@ -134,7 +106,7 @@ def tela_funcionario():
                 with st.container(border=True):
                     data_br = datetime.strptime(row['Data'], '%Y-%m-%d').strftime('%d/%m/%Y')
                     diff = row['Diferença (min)']
-                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "blue"
+                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "Yellow"
                     texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
                     col1, col2, col3, col4 = st.columns([3, 2, 2, 4])
                     col1.text(f"Evento: {row['Descrição']}")
@@ -153,7 +125,7 @@ def tela_admin():
         else: st.error(msg)
         st.session_state.status_message = None
 
-    tab1, tab2, tab3 = st.tabs(["Relatório de Pontos", "Cadastrar Funcionário", "Visualizar Funcionários"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Relatório de Pontos", "Cadastrar Funcionário", "Visualizar Funcionários", "Importar Funcionários"])
     with tab1:
         st.header("Filtros do Relatório")
         empresas_df = ler_empresas()
@@ -170,7 +142,6 @@ def tela_admin():
             data_inicio = st.date_input("Data Início", value=date.today().replace(day=1), format="DD/MM/YYYY")
         with col3_filtros:
             data_fim = st.date_input("Data Fim", value=date.today(), format="DD/MM/YYYY")
-        
         st.divider()
         st.header("Relatório de Pontos")
         funcionarios_df = ler_funcionarios_df()
@@ -179,14 +150,9 @@ def tela_admin():
             codigos_funcionarios_empresa = funcionarios_df[funcionarios_df['empresa_id'] == empresa_selecionada_id]['codigo'].tolist()
         else:
             codigos_funcionarios_empresa = funcionarios_df[funcionarios_df['role'] == 'employee']['codigo'].tolist()
-        
         df_filtrado_empresa = df_registros[df_registros['Código'].isin(codigos_funcionarios_empresa)]
         df_filtrado_empresa['Data_dt'] = pd.to_datetime(df_filtrado_empresa['Data'], format='%Y-%m-%d').dt.date
-        df_filtrado_data = df_filtrado_empresa[
-            (df_filtrado_empresa['Data_dt'] >= data_inicio) &
-            (df_filtrado_empresa['Data_dt'] <= data_fim)
-        ].copy()
-
+        df_filtrado_data = df_filtrado_empresa[(df_filtrado_empresa['Data_dt'] >= data_inicio) & (df_filtrado_empresa['Data_dt'] <= data_fim)].copy()
         opcoes_funcionarios_filtrados = {"Todos": "Todos"}
         for _, row in funcionarios_df[funcionarios_df['codigo'].isin(codigos_funcionarios_empresa)].iterrows():
             opcoes_funcionarios_filtrados[row['codigo']] = f"{row['nome']} (Cód: {row['codigo']})"
@@ -195,11 +161,9 @@ def tela_admin():
             options=list(opcoes_funcionarios_filtrados.keys()),
             format_func=lambda x: opcoes_funcionarios_filtrados[x]
         )
-        
         df_final_filtrado = df_filtrado_data.copy()
         if codigo_selecionado != "Todos":
             df_final_filtrado = df_final_filtrado[df_final_filtrado['Código'] == codigo_selecionado]
-        
         if df_final_filtrado.empty:
             st.info("Nenhum registro encontrado para os filtros selecionados.")
         else:
@@ -210,7 +174,7 @@ def tela_admin():
                 with st.container(border=True):
                     data_br = row['Data_dt'].strftime('%d/%m/%Y')
                     diff = row['Diferença (min)']
-                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "yellow"
+                    cor_diff = "green" if diff == 0 else "red" if diff > 0 else "lightgray"
                     texto_diff = "Em ponto" if diff == 0 else f"{'+' if diff > 0 else ''}{diff} min ({'atraso' if diff > 0 else 'adiantado'})"
                     col1, col2, col3, col4, col5 = st.columns([2, 3, 2, 3, 1])
                     col1.text(f"Nome: {row['Nome']}")
@@ -233,11 +197,7 @@ def tela_admin():
                             if horario_mudou or obs_mudou:
                                 horario_para_atualizar = novo_horario.strip() if horario_mudou else None
                                 obs_para_atualizar = nova_obs.strip() if obs_mudou else None
-                                msg, tipo = atualizar_registro(
-                                    registro_id,
-                                    novo_horario=horario_para_atualizar,
-                                    nova_observacao=obs_para_atualizar
-                                )
+                                msg, tipo = atualizar_registro(registro_id, novo_horario=horario_para_atualizar, nova_observacao=obs_para_atualizar)
                                 st.session_state.status_message = (msg, tipo)
                             st.session_state.edit_id = None
                             st.rerun()
@@ -246,7 +206,6 @@ def tela_admin():
                             st.rerun()
                     elif row.get('Observação'):
                         st.markdown(f"**Obs:** *{row['Observação']}*")
-            
             st.divider()
             st.subheader("Exportar Relatório Completo")
             df_organizado = gerar_relatorio_organizado_df(df_final_filtrado)
@@ -257,36 +216,23 @@ def tela_admin():
                 label="📥 Baixar Relatório Filtrado em Excel",
                 data=excel_buffer,
                 file_name=f"relatorio_ponto_filtrado.xlsx",
-                mime="application/vnd.openxmlformats-officedocument-spreadsheetml-sheet",
+                mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet",
                 use_container_width=True
             )
-
     with tab2:
         st.header("Cadastrar Novo Funcionário")
         empresas_df_cadastro = ler_empresas()
         empresas_para_cadastro = dict(zip(empresas_df_cadastro['id'], empresas_df_cadastro['nome_empresa']))
         with st.form("add_employee_form", clear_on_submit=True):
-            empresa_id_cadastro = st.selectbox(
-                "Empresa do Funcionário",
-                options=list(empresas_para_cadastro.keys()),
-                format_func=lambda x: empresas_para_cadastro[x]
-            )
+            empresa_id_cadastro = st.selectbox("Empresa do Funcionário", options=list(empresas_para_cadastro.keys()), format_func=lambda x: empresas_para_cadastro[x])
             novo_codigo = st.text_input("Código do Funcionário (único)")
             novo_nome = st.text_input("Nome Completo")
-            novo_cargo = st.text_input("Cargo")
             nova_senha = st.text_input("Senha Provisória", type="password")
             submitted = st.form_submit_button("Adicionar Funcionário")
             if submitted:
-                msg, tipo = adicionar_funcionario(
-                    novo_codigo.strip(), 
-                    novo_nome.strip(), 
-                    novo_cargo.strip(), 
-                    nova_senha,
-                    empresa_id_cadastro
-                )
+                msg, tipo = adicionar_funcionario(novo_codigo.strip(), novo_nome.strip(), nova_senha, empresa_id_cadastro)
                 st.session_state.status_message = (msg, tipo)
                 st.rerun()
-
     with tab3:
         st.header("Funcionários Cadastrados no Sistema")
         todos_funcionarios_df = ler_funcionarios_df()
@@ -294,13 +240,38 @@ def tela_admin():
         if df_exibicao.empty:
             st.info("Nenhum funcionário cadastrado no sistema (além do administrador).")
         else:
-            df_final = df_exibicao[['codigo', 'nome', 'cargo', 'nome_empresa']].rename(columns={
-                'codigo': 'Código',
-                'nome': 'Nome',
-                'cargo': 'Cargo',
-                'nome_empresa': 'Empresa'
-            })
+            df_final = df_exibicao[['codigo', 'nome', 'nome_empresa']].rename(columns={'codigo': 'Código', 'nome': 'Nome', 'nome_empresa': 'Empresa'})
             st.dataframe(df_final, use_container_width=True, hide_index=True)
+            
+    with tab4:
+        st.header("Importar Funcionários em Lote via CSV")
+        st.info("O arquivo CSV precisa conter as colunas: `MATRICULA`, `COLABORADOR` e `SENHA`.")
+        empresas_df_import = ler_empresas()
+        empresas_para_import = dict(zip(empresas_df_import['id'], empresas_df_import['nome_empresa']))
+        empresa_id_importacao = st.selectbox("Selecione a empresa para qual estes funcionários serão importados:", options=list(empresas_para_import.keys()), format_func=lambda x: empresas_para_import[x], key="empresa_import")
+        arquivo_csv = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+        if st.button("Iniciar Importação", type="primary", use_container_width=True):
+            if arquivo_csv is not None and empresa_id_importacao is not None:
+                with st.spinner("Processando arquivo..."):
+                    try:
+                        # --- CORREÇÃO APLICADA AQUI ---
+                        df_para_importar = pd.read_csv(arquivo_csv, sep=';')
+                        
+                        df_para_importar.columns = [col.strip().upper() for col in df_para_importar.columns]
+                        
+                        sucesso, ignorados, erros = importar_funcionarios_em_massa(df_para_importar, empresa_id_importacao)
+                        
+                        st.success(f"{sucesso} funcionários importados com sucesso!")
+                        if ignorados > 0:
+                            st.warning(f"{ignorados} funcionários foram ignorados (matrícula já existente).")
+                        if erros:
+                            st.error("Ocorreram os seguintes erros durante a importação:")
+                            for erro in erros:
+                                st.code(erro)
+                    except Exception as e:
+                        st.error(f"Não foi possível ler o arquivo. Verifique se o formato está correto. Erro: {e}")
+            else:
+                st.warning("Por favor, selecione uma empresa e um arquivo CSV para continuar.")
 
 if st.session_state.user_info:
     st.sidebar.image("assets/logo.png", use_container_width=True)
