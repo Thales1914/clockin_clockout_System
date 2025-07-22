@@ -292,25 +292,42 @@ def _formatar_timedelta(td):
 def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     if df_registros.empty:
         return pd.DataFrame()
+
     df = df_registros.copy()
+    
+    # --- CORREÇÃO ADICIONADA AQUI ---
+    # Mapeia os nomes de eventos antigos para os novos para garantir compatibilidade
+    mapeamento_eventos = {
+        "Início do Expediente": "Entrada",
+        "Fim do Expediente": "Saída"
+    }
+    df['Descrição'] = df['Descrição'].replace(mapeamento_eventos)
+
     df_pivot = df.pivot_table(
         index=['Data', 'Código', 'Nome', 'Empresa'],
         columns='Descrição',
         values='Hora',
         aggfunc='first'
     ).reset_index()
+
     df_obs = df.dropna(subset=['Observação']).groupby(['Data', 'Código'])['Observação'].apply(lambda x: ' | '.join(x.unique())).reset_index()
+    
     df_final = pd.merge(df_pivot, df_obs, on=['Data', 'Código'], how='left')
     df_final['Observação'] = df_final['Observação'].fillna('')
+
     eventos = ['Entrada', 'Saída']
     for evento in eventos:
         if evento not in df_final.columns:
             df_final[evento] = np.nan
         df_final[evento] = pd.to_datetime(df_final[evento], format='%H:%M:%S', errors='coerce').dt.time
+
     dt_entrada = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Entrada'].astype(str), errors='coerce')
     dt_saida = pd.to_datetime(df_final['Data'].astype(str) + ' ' + df_final['Saída'].astype(str), errors='coerce')
+
     horas_trabalhadas = dt_saida - dt_entrada
+    
     df_final['Total Horas Trabalhadas'] = horas_trabalhadas.apply(_formatar_timedelta)
+    
     colunas_finais = [
         'Data', 'Código', 'Nome', 'Empresa',
         'Entrada', 'Saída',
@@ -319,7 +336,9 @@ def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
     for col in colunas_finais:
         if col not in df_final.columns:
             df_final[col] = 'N/A'
+            
     df_final = df_final[colunas_finais]
+    
     df_final.rename(columns={'Código': 'Código do Funcionário', 'Nome': 'Nome do Funcionário'}, inplace=True)
     df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y')
     return df_final
