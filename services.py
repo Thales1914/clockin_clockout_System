@@ -294,9 +294,7 @@ def gerar_relatorio_organizado_df(df_registros: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = df_registros.copy()
-    
-    # --- CORREÇÃO ADICIONADA AQUI ---
-    # Mapeia os nomes de eventos antigos para os novos para garantir compatibilidade
+
     mapeamento_eventos = {
         "Início do Expediente": "Entrada",
         "Fim do Expediente": "Saída"
